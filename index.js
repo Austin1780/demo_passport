@@ -1,41 +1,42 @@
-const express = require("express");
-const app = express();
-const passport = require("passport");
-const LocalStrategy = require("passport-local").Strategy;
+const app = require("express")();
 const cookieParser = require("cookie-parser");
 const bodyParser = require("body-parser");
 const expressSession = require("express-session");
-const mongoose = require("mongoose");
 const flash = require("express-flash");
-const User = require("./models/User");
-mongoose.connect("mongodb://localhost/passport-test");
-mongoose.promise = Promise;
 
 app.use(cookieParser());
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(flash());
 app.use(
   expressSession({
-    secret: "keyboard cat",
+    secret: process.env.secret || "keyboard cat",
     saveUninitialized: false,
     resave: false
   })
 );
+
+// require Passport and the Local Strategy
+const passport = require("passport");
 app.use(passport.initialize());
 app.use(passport.session());
+
+// User and Mongoose code
+
+const User = require("./models/User");
+const mongoose = require("mongoose");
+mongoose.connect("mongodb://localhost/passport-demo");
+
+// Local Strategy Set Up
+
+const LocalStrategy = require("passport-local").Strategy;
 
 passport.use(
   new LocalStrategy(function(username, password, done) {
     User.findOne({ username }, function(err, user) {
-      if (err) {
-        return done(err);
-      }
-      if (!user) {
-        return done(null, false, { message: "Incorrect username." });
-      }
-      if (!user.validPassword(password)) {
-        return done(null, false, { message: "Incorrect password." });
-      }
+      console.log(user);
+      if (err) return done(err);
+      if (!user || !user.validPassword(password))
+        return done(null, false, { message: "Invalid username/password" });
       return done(null, user);
     });
   })
@@ -59,8 +60,8 @@ const FACEBOOK_APP_SECRET = process.env.FB_APP_SECRET;
 passport.use(
   new FacebookStrategy(
     {
-      clientID: FACEBOOK_APP_ID,
-      clientSecret: FACEBOOK_APP_SECRET,
+      clientID: FACEBOOK_APP_ID || "hi",
+      clientSecret: FACEBOOK_APP_SECRET || "no",
       callbackURL: "http://localhost:4000/auth/facebook/callback",
       passReqToCallback: true
     },
@@ -112,6 +113,24 @@ app.get(
 
 app.set("view engine", "hbs");
 
+app.post("/profile", (req, res) => {
+  const { password, username } = req.body;
+  const user = req.user;
+  console.log(user);
+  if (password) user.password = password;
+  if (username) user.username = username;
+  user.save((err, user) => {
+    if (err) {
+      console.log(err);
+      req.flash("warning", "fail");
+      res.redirect("back");
+    } else {
+      req.flash("warning", "success");
+      res.redirect("back");
+    }
+  });
+});
+
 app.get("/", (req, res) => {
   if (req.user) {
     res.render("home", { user: req.user });
@@ -133,33 +152,6 @@ app.get("/logout", function(req, res) {
   res.redirect("/");
 });
 
-app.post("/profile", (req, res) => {
-  const { password, username } = req.body;
-  const user = req.user;
-  console.log(user);
-  if (password) user.password = password;
-  if (username) user.username = username;
-  user.save((err, user) => {
-    if (err) {
-      console.log(err);
-      req.flash("warning", "fail");
-      res.redirect("back");
-    } else {
-      req.flash("warning", "success");
-      res.redirect("back");
-    }
-  });
-});
-
-app.post(
-  "/login",
-  passport.authenticate("local", {
-    successRedirect: "/",
-    failureRedirect: "/login",
-    failureFlash: true
-  })
-);
-
 app.post(
   "/login",
   passport.authenticate("local", {
@@ -171,10 +163,8 @@ app.post(
 
 app.post("/register", (req, res, next) => {
   const { username, password } = req.body;
-  console.log(req.body);
   const user = new User({ username, password });
   user.save((err, user) => {
-    console.log(err, user);
     req.login(user, function(err) {
       if (err) {
         return next(err);
