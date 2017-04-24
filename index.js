@@ -15,6 +15,8 @@ app.use(
   })
 );
 
+app.set("view engine", "hbs");
+
 // require Passport and the Local Strategy
 const passport = require("passport");
 app.use(passport.initialize());
@@ -25,22 +27,6 @@ app.use(passport.session());
 const User = require("./models/User");
 const mongoose = require("mongoose");
 mongoose.connect("mongodb://localhost/passport-demo");
-
-// Local Strategy Set Up
-
-const LocalStrategy = require("passport-local").Strategy;
-
-passport.use(
-  new LocalStrategy(function(username, password, done) {
-    User.findOne({ username }, function(err, user) {
-      console.log(user);
-      if (err) return done(err);
-      if (!user || !user.validPassword(password))
-        return done(null, false, { message: "Invalid username/password" });
-      return done(null, user);
-    });
-  })
-);
 
 passport.serializeUser(function(user, done) {
   done(null, user.id);
@@ -54,49 +40,31 @@ passport.deserializeUser(function(id, done) {
 
 // facebook
 const FacebookStrategy = require("passport-facebook").Strategy;
-const FACEBOOK_APP_ID = process.env.FB_APP_ID;
-const FACEBOOK_APP_SECRET = process.env.FB_APP_SECRET;
 
 passport.use(
   new FacebookStrategy(
     {
-      clientID: FACEBOOK_APP_ID || "hi",
-      clientSecret: FACEBOOK_APP_SECRET || "no",
-      callbackURL: "http://localhost:4000/auth/facebook/callback",
-      passReqToCallback: true
+      clientID: process.env.FACEBOOK_APP_ID,
+      clientSecret: process.env.FACEBOOK_APP_SECRET,
+      callbackURL: "http://localhost:4000/auth/facebook/callback"
     },
-    function(req, accessToken, refreshToken, profile, done) {
+    function(accessToken, refreshToken, profile, done) {
       const facebookId = profile.id;
-      if (req.user) {
-        req.user.facebookId = facebookId;
-        req.user.save((err, user) => {
-          if (err) {
-            done(err);
-          } else {
+      User.findOne({ facebookId }, function(err, user) {
+        if (err) return done(err);
+
+        if (!user) {
+          // Create a new account if one doesn't exist
+          user = new User({ facebookId, username: profile.displayName });
+          user.save((err, user) => {
+            if (err) return done(err);
             done(null, user);
-          }
-        });
-      } else {
-        User.findOne({ facebookId }, function(err, user) {
-          if (err) {
-            console.log(err);
-            return done(err);
-          }
-          console.log("H", user);
-          if (!user) {
-            user = new User({ facebookId, username: profile.displayName });
-            console.log(user);
-            user.save((err, user) => {
-              if (err) {
-                console.log(err);
-              }
-              done(null, user);
-            });
-          } else {
-            done(null, user);
-          }
-        });
-      }
+          });
+        } else {
+          // Otherwise, return the extant user.
+          done(null, user);
+        }
+      });
     }
   )
 );
@@ -111,26 +79,6 @@ app.get(
   })
 );
 
-app.set("view engine", "hbs");
-
-app.post("/profile", (req, res) => {
-  const { password, username } = req.body;
-  const user = req.user;
-  console.log(user);
-  if (password) user.password = password;
-  if (username) user.username = username;
-  user.save((err, user) => {
-    if (err) {
-      console.log(err);
-      req.flash("warning", "fail");
-      res.redirect("back");
-    } else {
-      req.flash("warning", "success");
-      res.redirect("back");
-    }
-  });
-});
-
 app.get("/", (req, res) => {
   if (req.user) {
     res.render("home", { user: req.user });
@@ -143,35 +91,9 @@ app.get("/login", (req, res) => {
   res.render("login");
 });
 
-app.get("/register", (req, res) => {
-  res.render("register");
-});
-
 app.get("/logout", function(req, res) {
   req.logout();
   res.redirect("/");
-});
-
-app.post(
-  "/login",
-  passport.authenticate("local", {
-    successRedirect: "/",
-    failureRedirect: "/login",
-    failureFlash: true
-  })
-);
-
-app.post("/register", (req, res, next) => {
-  const { username, password } = req.body;
-  const user = new User({ username, password });
-  user.save((err, user) => {
-    req.login(user, function(err) {
-      if (err) {
-        return next(err);
-      }
-      return res.redirect("/");
-    });
-  });
 });
 
 app.listen(4000);
