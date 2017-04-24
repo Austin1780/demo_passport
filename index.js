@@ -52,84 +52,7 @@ passport.deserializeUser(function(id, done) {
   });
 });
 
-// facebook
-const FacebookStrategy = require("passport-facebook").Strategy;
-const FACEBOOK_APP_ID = process.env.FB_APP_ID;
-const FACEBOOK_APP_SECRET = process.env.FB_APP_SECRET;
-
-passport.use(
-  new FacebookStrategy(
-    {
-      clientID: FACEBOOK_APP_ID || "hi",
-      clientSecret: FACEBOOK_APP_SECRET || "no",
-      callbackURL: "http://localhost:4000/auth/facebook/callback",
-      passReqToCallback: true
-    },
-    function(req, accessToken, refreshToken, profile, done) {
-      const facebookId = profile.id;
-      if (req.user) {
-        req.user.facebookId = facebookId;
-        req.user.save((err, user) => {
-          if (err) {
-            done(err);
-          } else {
-            done(null, user);
-          }
-        });
-      } else {
-        User.findOne({ facebookId }, function(err, user) {
-          if (err) {
-            console.log(err);
-            return done(err);
-          }
-          console.log("H", user);
-          if (!user) {
-            user = new User({ facebookId, username: profile.displayName });
-            console.log(user);
-            user.save((err, user) => {
-              if (err) {
-                console.log(err);
-              }
-              done(null, user);
-            });
-          } else {
-            done(null, user);
-          }
-        });
-      }
-    }
-  )
-);
-
-app.get("/auth/facebook", passport.authenticate("facebook"));
-
-app.get(
-  "/auth/facebook/callback",
-  passport.authenticate("facebook", {
-    successRedirect: "/",
-    failureRedirect: "/login"
-  })
-);
-
 app.set("view engine", "hbs");
-
-app.post("/profile", (req, res) => {
-  const { password, username } = req.body;
-  const user = req.user;
-  console.log(user);
-  if (password) user.password = password;
-  if (username) user.username = username;
-  user.save((err, user) => {
-    if (err) {
-      console.log(err);
-      req.flash("warning", "fail");
-      res.redirect("back");
-    } else {
-      req.flash("warning", "success");
-      res.redirect("back");
-    }
-  });
-});
 
 app.get("/", (req, res) => {
   if (req.user) {
@@ -145,11 +68,6 @@ app.get("/login", (req, res) => {
 
 app.get("/register", (req, res) => {
   res.render("register");
-});
-
-app.get("/logout", function(req, res) {
-  req.logout();
-  res.redirect("/");
 });
 
 app.post(
@@ -172,6 +90,11 @@ app.post("/register", (req, res, next) => {
       return res.redirect("/");
     });
   });
+});
+
+app.get("/logout", function(req, res) {
+  req.logout();
+  res.redirect("/");
 });
 
 app.listen(4000);
